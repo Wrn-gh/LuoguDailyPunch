@@ -1,0 +1,7 @@
+.venv
+release
+dist
+
+.vscode
+
+__pycache__

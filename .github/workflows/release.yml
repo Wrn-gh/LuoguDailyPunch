@@ -1,0 +1,71 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v1.0.0)"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build with Nuitka
+        run: nuitka --onefile --standalone --windows-console-mode=attach src/main.py --output-filename="lgpunch.exe" --output-dir="dist"
+
+      - name: Prepare release package
+        run: |
+          New-Item -Path "release" -ItemType Directory -Force | Out-Null
+          Copy-Item -Path "dist\lgpunch.exe" -Destination "release\lgpunch.exe" -Force
+          Copy-Item -Path "scripts\setup.ps1" -Destination "release\setup.ps1" -Force
+
+      - name: Determine version tag
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create zip archive
+        run: Compress-Archive -Path "release\*" -DestinationPath "lgpunch-${{ steps.version.outputs.tag }}.zip"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Release ${{ steps.version.outputs.tag }}
+          body: |
+            ## LuoguDailyPunch ${{ steps.version.outputs.tag }}
+
+            ### 下载
+            解压 `lgpunch-${{ steps.version.outputs.tag }}.zip`，运行 `setup.ps1` 完成安装。
+
+            ### 快速开始
+            ```powershell
+            .\setup.ps1
+            ```
+          files: lgpunch-${{ steps.version.outputs.tag }}.zip
+          draft: false
+          prerelease: false
