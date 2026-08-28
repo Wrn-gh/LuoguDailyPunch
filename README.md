@@ -11,8 +11,6 @@
 - 每天自动打卡一次，用Windows通知显示今日运势 
 - 支持通过命令行手动打卡、查看打卡信息、配置用户信息
 
-## 截图
-
 ## 安装
 
 **通过Release安装（推荐）**
@@ -27,7 +25,7 @@
 **通过源码安装**
 ```powershell
 # 1. 克隆并进入目录
-git clone https://github.com/<your-username>/LuoguDailyPunch.git
+git clone https://github.com/Wrn-gh/LuoguDailyPunch.git
 cd LuoguDailyPunch
 
 # 2. 创建并激活虚拟环境
