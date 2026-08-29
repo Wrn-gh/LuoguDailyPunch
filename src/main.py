@@ -100,16 +100,18 @@ class LuoguDailyPuncher:
             message = ""
             if len(parseRes["goodThings"]) < 2:
                 message += "诸事不宜\n"
-            for i in range(2):
-                mi = "宜: " + parseRes["goodThings"][i] + \
-                    " [" + parseRes["goodTips"][i] + "]\n"
-                message += mi
+            else:
+                for i in range(2):
+                    mi = "宜: " + parseRes["goodThings"][i] + \
+                        " [" + parseRes["goodTips"][i] + "]\n"
+                    message += mi
             if len(parseRes["badThings"]) < 2:
                 message += "万事皆宜"
-            for i in range(2):
-                mi = "忌: " + parseRes["badThings"][i] + \
-                    " [" + parseRes["badTips"][i] + "]\n"
-                message += mi
+            else:
+                for i in range(2):
+                    mi = "忌: " + parseRes["badThings"][i] + \
+                        " [" + parseRes["badTips"][i] + "]\n"
+                    message += mi
             return title, message
         except:
             return "你的运势好像有些复杂", "自己去洛谷看看吧"
