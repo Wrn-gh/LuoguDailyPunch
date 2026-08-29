@@ -35,8 +35,15 @@ jobs:
       - name: Prepare release package
         run: |
           New-Item -Path "release" -ItemType Directory -Force | Out-Null
-          Copy-Item -Path "dist\lgpunch.exe" -Destination "release\lgpunch.exe" -Force
+          $exe = Get-ChildItem -Path "dist" -Filter "*.exe" -Recurse | Select-Object -First 1
+          if (-not $exe) {
+            Write-Host "[ERROR] No .exe found in dist/"
+            exit 1
+          }
+          Write-Host "[INFO] Found: $($exe.FullName)"
+          Copy-Item -Path $exe.FullName -Destination "release\lgpunch.exe" -Force
           Copy-Item -Path "scripts\setup.ps1" -Destination "release\setup.ps1" -Force
+          Get-ChildItem -Path "release" | ForEach-Object { Write-Host "  - $($_.Name) ($($_.Length) bytes)" }
 
       - name: Determine version tag
         id: version
