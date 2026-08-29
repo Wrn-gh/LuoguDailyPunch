@@ -30,7 +30,9 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Build with Nuitka
-        run: nuitka --onefile --standalone --windows-console-mode=attach src/main.py --output-filename="lgpunch.exe" --output-dir="dist"
+        run: nuitka --onefile --standalone --windows-console-mode=attach --assume-yes-for-downloads src/main.py --output-filename="lgpunch.exe" --output-dir="dist"
+        env:
+          NUITKA_ASSUME_YES_FOR_DOWNLOADS: "1"
 
       - name: Prepare release package
         run: |
