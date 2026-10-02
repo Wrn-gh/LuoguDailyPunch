@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import time
 import requests
@@ -8,7 +9,10 @@ from datetime import datetime, timedelta, timezone
 URL = "https://www.luogu.com.cn/index/ajax_punch"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36 Edg/151.0.0.0"
+                  "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36 Edg/151.0.0.0",
+    "Referer": "https://www.luogu.com.cn/",
+    "X-Requested-With": "XMLHttpRequest",
+    "Accept": "application/json, text/javascript, */*; q=0.01",
 }
 
 XPATHS = {
@@ -87,8 +91,44 @@ def main():
     client_id = os.environ["LUOGU_CLIENT_ID"]
 
     cookies = {"_uid": uid, "__client_id": client_id}
-    resp = requests.get(URL, headers=HEADERS, cookies=cookies, timeout=15)
-    data = resp.json()
+
+    data = None
+    last_status = None
+    last_url = None
+    last_content_type = None
+    last_body_head = ""
+    for attempt in range(1, 4):
+        try:
+            resp = requests.get(URL, headers=HEADERS, cookies=cookies, timeout=15)
+            last_status = resp.status_code
+            last_url = resp.url
+            last_content_type = resp.headers.get("content-type")
+            data = resp.json()
+            break
+        except requests.RequestException as e:
+            print(f"[WARN] 第 {attempt} 次请求失败：{e}")
+        except ValueError as e:
+            last_body_head = resp.text[:500]
+            print(f"[WARN] 第 {attempt} 次响应非 JSON：{e}")
+            print(f"       status={last_status} url={last_url} type={last_content_type}")
+            print(f"       body={last_body_head!r}")
+        if attempt < 3:
+            time.sleep(5 * attempt)
+
+    if data is None:
+        summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
+        diag = (
+            f"打卡失败：接口返回非 JSON 或请求失败\n\n"
+            f"- status: {last_status}\n"
+            f"- url: {last_url}\n"
+            f"- content-type: {last_content_type}\n"
+            f"- body 前 500 字符:\n\n```\n{last_body_head}\n```\n"
+        )
+        print(f"[ERROR] {diag}")
+        if summary_file:
+            with open(summary_file, "a", encoding="utf-8") as f:
+                f.write(f"## 打卡失败\n\n{diag}\n")
+        sys.exit(1)
 
     now_bj = datetime.now(BEIJING_TZ)
     result = {
@@ -112,9 +152,13 @@ def main():
         result["message"] = "一步一个脚印，不能急于求成"
         print("[INFO] 今天已经打过卡了")
     else:
-        result["title"] = "打卡失败"
-        result["message"] = f"code={data.get('code')}"
-        print(f"[ERROR] 打卡失败：{data}")
+        summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
+        msg = f"打卡失败：code={data.get('code')}，响应={data}"
+        print(f"[ERROR] {msg}")
+        if summary_file:
+            with open(summary_file, "a", encoding="utf-8") as f:
+                f.write(f"## 打卡失败\n\n```\n{data}\n```\n")
+        sys.exit(1)
 
     os.makedirs("data", exist_ok=True)
     history_file = "data/history.json"
