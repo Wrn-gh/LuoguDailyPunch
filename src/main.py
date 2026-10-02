@@ -11,8 +11,12 @@ import json
 import time
 from datetime import datetime, date
 
+from card import Card
+
 APP_NAME = "LuoguDailyPunch"
 appDirs = PlatformDirs(APP_NAME)
+
+DEBUG = False
 
 
 def popup(title, message):
@@ -45,6 +49,7 @@ class LuoguDailyPuncher:
         "UID": "",
         "CLIENT_ID": "",
         "lastPunchRes": {},
+        "PunchRes": [],
         "lastPunchTime": "",
     }
 
@@ -82,6 +87,11 @@ class LuoguDailyPuncher:
             # print("xpath: %s" % self.xpaths[xkey])
             parseRes[xkey] = htmlObj.xpath(self.xpaths[xkey])
 
+        if DEBUG:
+            with open(os.path.join(appDirs.user_data_dir, "debug_punch_res.json"), "w", encoding="utf-8") as f:
+                json.dump(parseRes, f, ensure_ascii=False, indent=4)
+            print("数据已保存到 debug_punch_res.json")
+
         # print(parseRes)
         return parseRes
 
@@ -93,10 +103,31 @@ class LuoguDailyPuncher:
         return:
             title, messsage: 表示通知标题与消息
         """
+        vaild = {
+            "username": False,
+            "punchRes": False,
+            "goodThings": False,
+            "goodTips": False,
+            "badThings": False,
+            "badTips": False
+        }
+        for key in ["username", "punchRes", "goodThings", "goodTips", "badThings", "badTips"]:
+            if parseRes.get(key) and len(parseRes[key]) > 0:
+                vaild[key] = True
+        if not any(vaild.values()):
+            return "你的运势好像有些复杂", "自己去洛谷看看吧"
         try:
-            title = parseRes["punchRes"][0] + \
-            " - " + parseRes["username"][0] + \
+            if len(parseRes["goodThings"]) < 2:
+                punchres = "大凶"
+            elif len(parseRes["badThings"]) < 2:
+                punchres = "大吉"
+            else:
+                punchres = parseRes["punchRes"][0] if vaild["punchRes"] else "未知运势"
+            username = parseRes["username"][0] if vaild["username"] else "未知用户"
+            title = punchres + \
+            " - " + username + \
             "的运势"
+
             message = ""
             if len(parseRes["goodThings"]) < 2:
                 message += "诸事不宜\n"
@@ -113,13 +144,14 @@ class LuoguDailyPuncher:
                         " [" + parseRes["badTips"][i] + "]\n"
                     message += mi
             return title, message
-        except:
+        except Exception as e:
+            print(f"[ERROR] 解析运势数据时出错: {e}")
             return "你的运势好像有些复杂", "自己去洛谷看看吧"
 
     def punch(self):
         if not self.config["UID"] or not self.config["CLIENT_ID"]:
             print("[ERROR] 未配置用户信息")
-            return 
+            return {"ok": False, "kind": "no_config", "msg": "未配置用户信息，请先运行 lgpunch set"}
         
         # 上次打卡时间
         ltimestamp = self.config["lastPunchTime"]
@@ -127,26 +159,42 @@ class LuoguDailyPuncher:
         ndatetime = date.today()
         if ldatetime == ndatetime:
             print("[INFO] 今天你已经打过卡了哦，要一步一个脚印，不能急于求成!")
-            return
-        
+            return {"ok": False, "kind": "already", "msg": "今天已经打过卡了哦，要一步一个脚印"}
+
         cookies = {
             "_uid": self.config["UID"],
             "__client_id": self.config["CLIENT_ID"]
         }
-        response = requests.get(url=self.url, headers=self.headers, cookies=cookies)
-        jsonObj = response.json()
+        try:
+            response = requests.get(url=self.url, headers=self.headers, cookies=cookies, timeout=10)
+            jsonObj = response.json()
+        except Exception as e:
+            print(f"[ERROR] 网络请求失败: {e}")
+            return {"ok": False, "kind": "error", "msg": "网络错误，请稍后重试"}
+
         if jsonObj["code"] == 200:
             print("[INFO] 打卡成功!")
             pRes = self.parse_luogu_fortune(jsonObj["more"]["html"])
             t, m = self.gen_message(pRes)
             self.config["lastPunchRes"] = pRes
             self.config["lastPunchTime"] = time.time()
+            pResWithTime = {
+                "time": self.config["lastPunchTime"],
+                "res": pRes
+            }
+            history = self.config.setdefault("PunchRes", [])
+            if len(history) >= 30:
+                history.pop(0)
+            history.append(pResWithTime)
             self.save_config()
             popup(t, m)
+            return {"ok": True, "kind": "ok", "msg": "打卡成功！"}
         elif jsonObj["code"] == 201:
             print("[INFO] 今天你已经打过卡了哦，要一步一个脚印，不能急于求成!")
+            return {"ok": False, "kind": "already", "msg": "今天已经打过卡了哦，要一步一个脚印"}
         else:
             print("[ERROR] 似乎打卡失败了")
+            return {"ok": False, "kind": "error", "msg": "打卡失败，请稍后重试"}
 
     def set_user_info(self, uid, client_id):
         self.config["UID"] = uid
@@ -164,6 +212,10 @@ class LuoguDailyPuncher:
         dtObj = datetime.fromtimestamp(self.config["lastPunchTime"])
         fDate = dtObj.strftime('%Y-%m-%d %H:%M:%S')
         print("Punch Time: %s" % fDate)
+
+    def showCard(self):
+        card = Card(self.config, puncher=self)
+        card.showCard()
 
 if __name__ == "__main__":
     # 配置文件路径
@@ -186,6 +238,8 @@ if __name__ == "__main__":
 
     punchres_parser = subparser.add_parser("punchinfo", help="查看打卡信息")
 
+    card_parser = subparser.add_parser("card", help="显示打卡运势卡片")
+
     args = parser.parse_args()
 
     if args.command == "punch":
@@ -197,4 +251,6 @@ if __name__ == "__main__":
         luogu_daily_puncher.user_info()
     elif args.command == "punchinfo":
         luogu_daily_puncher.punch_info()
+    elif args.command == "card":
+        luogu_daily_puncher.showCard()
         

@@ -18,7 +18,7 @@ if (-not (Get-Command nuitka -ErrorAction SilentlyContinue)) {
 
 # Step 1: Build
 Write-Host "[Step 1] Building with Nuitka ..." -ForegroundColor Yellow
-& nuitka --onefile --standalone --windows-console-mode=attach src/main.py --output-filename="lgpunch.exe" --output-dir="dist"
+& nuitka --onefile --standalone --windows-console-mode=attach --disable-plugins=pywebview src/main.py --output-filename="lgpunch.exe" --output-dir="dist"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[ERROR] Build failed!" -ForegroundColor Red
     Read-Host "Press Enter to exit"
@@ -49,6 +49,20 @@ if (Test-Path "scripts/setup.ps1") {
     }
 } else {
     Write-Host "[WARNING] setup.ps1 not found, skipping." -ForegroundColor Yellow
+}
+
+if (Test-Path "release\ui") {
+    Remove-Item "release\ui" -Recurse -Force
+}
+if (Test-Path "ui") {
+    Copy-Item -Path "ui" -Destination "release\ui" -Recurse -Force
+    if ($?) {
+        Write-Host "[SUCCESS] ui copied to release\ui." -ForegroundColor Green
+    } else {
+        Write-Host "[WARNING] ui copy failed." -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "[WARNING] ui not found, skipping." -ForegroundColor Yellow
 }
 
 Write-Host ""

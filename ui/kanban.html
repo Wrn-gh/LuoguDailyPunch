@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="洛谷每日打卡运势看板：今日运势、宜忌与近 7 日记录。">
+<title>洛谷运势看板</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<style>
+/* ============================================================
+   固定视口：pywebview 卡片窗口 540x360（见 src/card.py，勿改）
+   布局约束：单卡片一屏显示全部内容，零滚动条（overflow 兜底）
+   配色锁定：蓝 = 洛谷蓝，唯一 UI 交互色
+             红 = 运势语义色（印章、宜），不参与交互
+   圆角锁定：卡片 14px / 内容块与标记 10px / 数据格 6px / 徽章按钮全圆
+   主题：跟随系统 prefers-color-scheme，整页单主题
+   ============================================================ */
+:root {
+  color-scheme: light;
+
+  --font-sans: "MiSans", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei",
+    system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* 衬线仅用于传统印记类小字（印章、宜忌标记），常规字重，不做伪加粗 */
+  --font-display: "Source Han Serif SC", "Noto Serif SC", "Songti SC", SimSun, serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, "JetBrains Mono", monospace;
+
+  --r-panel: 14px;
+  --r-inner: 10px;
+  --r-cell: 6px;
+  --r-pill: 999px;
+
+  --bg: #f4f4f2;
+  --panel: #ffffff;
+  --panel-2: #f5f5f2;
+  --line: #e6e6e1;
+  --line-2: #d7d7d1;
+  --text: #1b1c1f;
+  --text-2: #54555c;
+  --text-3: #6e6f77;
+
+  --ui: #009be5;
+  --ui-rgb: 0, 155, 229;
+  --ui-ink: #08151d;
+  --ui-text: #0074a8;
+
+  --red: #b73a30;
+  --red-rgb: 183, 58, 48;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --bg: #111214;
+    --panel: #111214;
+    --panel-2: #212227;
+    --line: #2a2b30;
+    --line-2: #3a3b41;
+    --text: #ececee;
+    --text-2: #a5a6ad;
+    --text-3: #8b8c94;
+
+    --ui-ink: #06131c;
+    --ui-text: #3ab8f0;
+
+    --red: #e06a5e;
+    --red-rgb: 224, 106, 94;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  padding: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: rgba(var(--ui-rgb), .28); }
+
+:focus-visible {
+  outline: 2px solid var(--ui-text);
+  outline-offset: 2px;
+}
+
+h1, h2, p, ul { margin: 0; }
+ul { padding: 0; list-style: none; }
+
+i.ph { line-height: 1; }
+.vh {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- 单卡片：填满 540x360 视口 ---------- */
+.card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--panel);
+  border-radius: var(--r-panel);
+  overflow: hidden;
+  position: relative;
+}
+
+/* ---------- 顶栏 ~22px ---------- */
+.top {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 22px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+/* 洛谷官方 logo，内联自 ui/resources/lgfull.svg（html= 加载方式下相对路径不可用，故内联） */
+.brand-logo {
+  display: block;
+  flex: none;
+  height: 20px;
+  width: auto;
+}
+.brand h1 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  white-space: nowrap;
+}
+.top-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.top-date {
+  font-size: 11.5px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px 2px 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--panel);
+}
+.user-avatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(var(--ui-rgb), .16);
+  color: var(--ui-text);
+  font-size: 10px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+.user-name {
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.close-btn {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-left: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-cell);
+  background: transparent;
+  color: var(--text-3);
+  font-size: 15px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background-color .15s ease, color .15s ease;
+}
+.close-btn:hover {
+  background: rgba(255, 68, 68, .14);
+  color: #e5484d;
+}
+
+/* ---------- 运势主条（flex 自适应，吸收剩余高度） ---------- */
+.hero {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.hero-main {
+  flex: 1;
+  min-width: 0;
+}
+.fortune-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+}
+.grade {
+  font-size: 54px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: .04em;
+}
+.seal {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 8px;
+  border: 1.5px solid var(--red);
+  border-radius: 50%;
+  color: var(--red);
+  font-family: var(--font-display);
+  font-size: 17px;
+  display: grid;
+  place-items: center;
+  transform: rotate(-8deg);
+  opacity: .88;
+}
+.read {
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.meta {
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-3);
+}
+.hero-side {
+  flex: none;
+  width: 148px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pill-ok {
+  background: rgba(var(--ui-rgb), .12);
+  color: var(--ui-text);
+  border: 1px solid rgba(var(--ui-rgb), .34);
+}
+.stats {
+  display: flex;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.stats b {
+  color: var(--text);
+  font-weight: 600;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--r-pill);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform .18s cubic-bezier(.16, 1, .3, 1),
+              box-shadow .18s ease,
+              background-color .18s ease,
+              color .18s ease;
+}
+.btn:disabled {
+  cursor: default;
+}
+.btn-primary {
+  background: var(--ui);
+  color: var(--ui-ink);
+  box-shadow: 0 1px 2px rgba(var(--ui-rgb), .25);
+}
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(var(--ui-rgb), .3);
+}
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0) scale(.985);
+  box-shadow: 0 1px 2px rgba(var(--ui-rgb), .25);
+}
+.btn-primary:disabled {
+  opacity: .78;
+}
+.btn .spin {
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+.btn.is-done {
+  background: rgba(var(--ui-rgb), .14);
+  color: var(--ui-text);
+  box-shadow: none;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---------- 未打卡界面（data-punched=0 时切换显示） ---------- */
+.empty-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  text-align: center;
+  padding: 8px 0 14px;
+}
+body[data-punched="0"] .hero,
+body[data-punched="0"] .yiji,
+body[data-punched="0"] .week { display: none; }
+body[data-punched="0"] .user-chip { display: none; }
+body[data-punched="0"] .empty-view { display: flex; }
+.empty-seal {
+  width: 46px;
+  height: 46px;
+  margin: 0 0 6px;
+  font-size: 23px;
+  opacity: .32;
+}
+.empty-view .btn {
+  width: auto;
+  min-width: 176px;
+  height: 34px;
+  margin-top: 10px;
+  padding: 0 22px;
+  font-size: 13px;
+}
+
+/* ---------- 打卡提示（toast） ---------- */
+.toast {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: calc(100% - 28px);
+  padding: 7px 14px;
+  border-radius: var(--r-pill);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translate(-50%, 8px);
+  pointer-events: none;
+  transition: opacity .22s ease, transform .22s cubic-bezier(.16, 1, .3, 1);
+}
+.toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.toast-ok {
+  background: rgba(var(--ui-rgb), .14);
+  color: var(--ui-text);
+  border: 1px solid rgba(var(--ui-rgb), .34);
+}
+.toast-info {
+  background: var(--panel-2);
+  color: var(--text-2);
+  border: 1px solid var(--line);
+}
+.toast-err {
+  background: rgba(var(--red-rgb), .12);
+  color: var(--red);
+  border: 1px solid rgba(var(--red-rgb), .34);
+}
+
+/* ---------- 宜 / 忌 ---------- */
+.yiji {
+  flex: none;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.col { min-width: 0; }
+.col-title {
+  display: flex;
+  align-items: center;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+.mark {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--r-inner);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 400;
+}
+.mark-yi {
+  background: rgba(var(--red-rgb), .12);
+  color: var(--red);
+}
+.mark-ji {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text-2);
+}
+.yiji li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  line-height: 1.5;
+}
+.yiji li + li {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--line);
+}
+.yiji li:has(> .yiji-name:empty) {
+  display: none;
+}
+.yiji-name {
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+}
+.yiji-tip {
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- 近 7 日运势（7 列网格，无横向滚动） ---------- */
+.week { flex: none; }
+.week-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  line-height: 1.4;
+  margin-bottom: 5px;
+}
+.days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+.day {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-cell);
+  padding: 5px 0;
+  text-align: center;
+}
+.day span {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--text-3);
+}
+.day b {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: .02em;
+}
+.day-today {
+  background: rgba(var(--ui-rgb), .1);
+  border-color: rgba(var(--ui-rgb), .42);
+}
+.day-today b { color: var(--ui-text); }
+
+/* ---------- 入场动效（仅 transform / opacity，尊重减弱动效） ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  .rise {
+    animation: rise .5s cubic-bezier(.16, 1, .3, 1) both;
+  }
+  .card > :nth-child(1) { animation-delay: .02s; }
+  .card > :nth-child(2) { animation-delay: .08s; }
+  .card > :nth-child(3) { animation-delay: .14s; }
+  .card > :nth-child(4) { animation-delay: .2s; }
+  .sk::after { animation: shimmer 1.4s linear infinite; }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes shimmer {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ---------- 状态样式（模板用，当前不渲染，均按单卡无滚动约束） ---------- */
+.state {
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+}
+.sk {
+  position: relative;
+  overflow: hidden;
+  background: var(--panel-2);
+  border-radius: var(--r-inner);
+}
+.sk::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .16), transparent);
+}
+.state-title { font-size: 15px; font-weight: 600; }
+.state-desc  { font-size: 12.5px; color: var(--text-2); }
+.state-error { color: var(--red); font-size: 13px; }
+.state .btn { width: auto; align-self: flex-start; height: 30px; }
+.btn-ghost {
+  background: transparent;
+  color: var(--ui-text);
+  border: 1px solid rgba(var(--ui-rgb), .45);
+}
+.btn-ghost:hover { background: rgba(var(--ui-rgb), .1); }
+</style>
+</head>
+<body data-punched="$punched$">
+<!-- 页面数据均为占位符（形如美元符号+名称+美元符号），显示前由逻辑层用正则 \$([A-Za-z_][A-Za-z0-9_]*)\$ 匹配替换 -->
+
+<div class="card">
+
+  <!-- 顶栏 -->
+  <header class="top rise">
+    <div class="brand">
+      <svg class="brand-logo" viewBox="0 0 309 157.2" width="39" height="20" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="洛谷" focusable="false">
+        <path fill="#5e9dd6" d="M110.93,34.24c3.08-.55,14.71,5.14,16.65,7.65,4.19,5.4-1.28,13.06-7.96,10.33-.88-.36-10.83-9-11.53-10.01-2.14-3.08-.76-7.34,2.83-7.98Z"/>
+        <path fill="#5e9dd6" d="M106.14,57.57c3.93-.83,16.22,5.12,17.82,8.85,2.21,5.14-2.45,10.97-7.92,9.1-1.08-.37-10.87-8.49-11.86-9.69-2.38-2.86-1.91-7.45,1.95-8.27Z"/>
+        <path fill="#5e9dd6" d="M161.39,37.14c.41.42,9.96-1.12,11.68-1.19,4.04-.17,12.21-1.09,13.34,4.01,1.7,7.66-11.24,21.22-15.45,27.35,5.84,4.5,12.2,8.42,18.76,11.78,2.27,1.16,11.75,4.42,12.3,6.28.87,2.96-6.74,5.27-9.02,5.74-2.9.6-4.81.5-7.66-.17,2.53,4.32-2.5,15.03-.89,18.51.45.96,2.2,1.61,2.56,2.82.94,3.13-.15,7.43-3.8,7.91-8.59.97-19.21-.29-27.52,1.22-1.59.29-1.54,1.85-2.69,2.69-3.93,2.88-9.88,1.06-10.12-4.23l-2.45-28.94c-5.29,1.28-8.18,4.8-12.57-.6-1.98,6.73-7.33,24.77-12.88,28.69-5.04,3.56-11.62-.73-10.35-6.74l13.92-26.75c3.15-4.12,8.69-2.47,9.6,2.41,2.55-3.29,6.53-4.65,9.83-6.92,2.62-1.81,16.22-11.75,16.76-13.81.38-1.45-6.28-7.95-7.49-9.72-1.5-.32-10.39,12.86-16.23,8.16-4.85-3.91,3.76-9.58,6.12-12.36,5.81-6.85,9.87-14.32,14.68-21.81,2.81-1.95,7.76-1.02,9.12,2.23.49,1.17.33,3.31.45,3.44ZM170.97,46.7c-.55-.56-14.34.89-15.74,1.32-1.07.33-2.47,1.87-2.16,3.04.17.66,8.51,8.9,9.15,8.76,1.51-1.69,10.37-11.46,8.75-13.12ZM178.16,86.14l-14.66-11.36c-5.09,3.87-10.7,7.27-15.72,11.19-.37.29-1.73.52-.76,1.36.68.59,8.4.66,9.91.63l21.23-1.82ZM153,98.1c.18,1.94.37,12.33,1.16,12.9,2.7-.26,17.39-.16,18.35-1.5-.15-2.18,1.89-11.22.3-12.33-2.04-1.42-16.37,1.44-19.8.93Z"/>
+        <path fill="#5e9dd6" d="M237.88,32.49c5.85-1.19,10.36,3.86,7.85,9.63-1.98,4.55-17.3,19.17-22.05,20.43s-7.9-1.96-5.91-6.5c1.25-2.86,8.43-9.89,10.92-13.01s5.61-9.84,9.18-10.56Z"/>
+        <path fill="#5e9dd6" d="M291.73,56.06c-6.8,6.79-13.34-4.35-17.45-8.77-2.62-2.82-9.48-7.93-9.33-11.63.19-4.62,4.68-5.03,8.23-3.41s17.42,11.88,19.26,14.85,1.89,6.37-.7,8.96Z"/>
+        <path fill="#5e9dd6" d="M229.65,90.34c-1.34-1.4-11.92,9.1-17.11,6.01-2.2-1.31-2.57-4.54-.99-6.45,11.52-8.57,22.36-17.19,31.25-28.58,2.78-3.56,6.04-10.01,8.77-12.77s6.93-2.53,9.53-.07c2.23,2.12.84,4.18,2.05,6.32,2.85,5.05,23.05,18.99,28.83,22.63,5.08,3.2,11.41,5.29,15.47,9.69.4,2.29-9.69,5.43-11.63,5.6-5.2.45-5.57-2.37-9.87-3.9,2.5,4.6-3.19,17.05-1.5,20.62,1.07,2.25,2.45,1.04,2.12,5.71-.29,4.09-2.51,4.67-6.32,5.05-10.92,1.09-23.07.4-34.13,1.2-1.59.27-1.62,2.05-3.06,2.93-3.45,2.1-9,1.65-10.26-2.77l-3.14-31.23ZM279.96,84.35l-22.43-21.51-20.69,21.81c3.77,1.64,7.64,1.64,11.71,1.53,6.78-.18,14.13-1.41,20.94-1.81,3.47-.2,7,.14,10.47,0ZM271.57,109.46c-.59-2.51,2.45-12.81.64-14.08-2.14-1.5-24.52,2.16-28.78,1.53l1.2,14.35,26.94-1.8Z"/>
+        <path fill="#5e9dd6" d="M51.2,95.11c14.1-.75,16.93,9.6,23.47,18.72,2.85,3.98,16.67,16.23,4.93,17.69-3.56.44-10.41-.11-13.38-2.08-3.18-2.11-6.88-9.59-9.64-13.09-3.74-4.73-9.31-8.83-11.37-14.66-.83-.17-.76-.12-1.24.38-5.12,5.39-10,11.05-15.23,16.35-6.43,6.43-5.9,13.45-16.78,13.19-3.42-.08-11.32-.77-10.35-5.56.72-3.56,9.35-14.07,12.15-17.19,10.63-11.85,24.19-22.39,35.06-34.34,1.63-1.79,7.09-7.41,6.5-9.45-.42-1.46-12.44-7.4-14.57-10.01-1.64-2-3.17-6.5-.68-8.4,2.97-2.25,20.3.87,24.92.33,6.01,2.84,15.84,12.58,13,19.59-2.1,5.19-15.55,16.1-20.22,21.06-2.2,2.34-4.26,5.16-6.57,7.48Z"/>
+        <path fill="#9ec3e6" d="M42.66,12.18c10.24-1.76,11.18,5.9,8.41,13.77-3.18,9.02-10.27,16.53-17.22,22.85-2.85,2.59-8.44,4.72-8.44,8.96,0,4.72,5.2,4.92,8.4,7.21,2.83,2.03,5.38,5.78,6.49,9.06,2.83,8.41-8.02,10.04-14.26,8.26-4.93-1.41-19.55-16.02-20.96-20.92-3.17-10.96,8.64-17.44,14.71-24.23,5.37-6,15.49-23.69,22.89-24.97Z"/>
+      </svg>
+      <h1>运势看板</h1>
+    </div>
+    <div class="top-right">
+      <span class="top-date">$top_date$</span>
+      <div class="user-chip">
+        <span class="user-avatar" aria-hidden="true">$avatar$</span>
+        <span class="user-name">$username$</span>
+      </div>
+      <button class="close-btn" type="button" title="关闭" aria-label="关闭">×</button>
+    </div>
+  </header>
+
+  <!-- 今日运势 -->
+  <section class="hero rise" aria-label="今日运势">
+    <div class="hero-main">
+      <div class="fortune-row">
+        <p class="grade">$grade$</p>
+        <span class="seal" aria-hidden="true">运</span>
+      </div>
+      <p class="read">$fortune_desc$</p>
+      <p class="meta">$punch_date$ · 打卡于 $punch_time$</p>
+    </div>
+    <div class="hero-side">
+      <span class="pill pill-ok"><i class="ph ph-check-circle" aria-hidden="true"></i>$status$</span>
+      <p class="stats"><span>连续 <b>$streak$</b></span><span>累计 <b>$total$</b></span></p>
+      <button class="btn btn-primary punch-btn" type="button">
+        <i class="ph ph-lightning" aria-hidden="true"></i>手动打卡
+      </button>
+    </div>
+  </section>
+
+  <!-- 宜 / 忌 -->
+  <section class="yiji rise" aria-label="今日宜忌">
+    <div class="col">
+      <h2 class="col-title"><span class="mark mark-yi" aria-hidden="true">宜</span><span class="vh">今日宜</span></h2>
+      <ul>
+        <li><b class="yiji-name">$good1$</b><span class="yiji-tip">$good1_tip$</span></li>
+        <li><b class="yiji-name">$good2$</b><span class="yiji-tip">$good2_tip$</span></li>
+      </ul>
+    </div>
+    <div class="col">
+      <h2 class="col-title"><span class="mark mark-ji" aria-hidden="true">忌</span><span class="vh">今日忌</span></h2>
+      <ul>
+        <li><b class="yiji-name">$bad1$</b><span class="yiji-tip">$bad1_tip$</span></li>
+        <li><b class="yiji-name">$bad2$</b><span class="yiji-tip">$bad2_tip$</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 近 7 日运势 -->
+  <section class="week rise" aria-label="近 7 日运势">
+    <h2 class="week-label">近 7 日运势</h2>
+    <div class="days">
+      <div class="day day-today"><span>$date1$</span><b>$grade1$</b></div>
+      <div class="day"><span>$date2$</span><b>$grade2$</b></div>
+      <div class="day"><span>$date3$</span><b>$grade3$</b></div>
+      <div class="day"><span>$date4$</span><b>$grade4$</b></div>
+      <div class="day"><span>$date5$</span><b>$grade5$</b></div>
+      <div class="day"><span>$date6$</span><b>$grade6$</b></div>
+      <div class="day"><span>$date7$</span><b>$grade7$</b></div>
+    </div>
+  </section>
+
+  <!-- 未打卡（data-punched=0 时显示，替代主卡片内容） -->
+  <section class="empty-view" aria-label="今日未打卡">
+    <span class="seal empty-seal" aria-hidden="true">运</span>
+    <p class="state-title">今天还没有打卡</p>
+    <p class="state-desc">打卡后这里会显示今日运势与宜忌。</p>
+    <button class="btn btn-primary punch-btn" type="button">
+      <i class="ph ph-lightning" aria-hidden="true"></i>手动打卡
+    </button>
+  </section>
+
+  <!-- 打卡提示 -->
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+</div>
+
+<!-- 状态模板：由后续逻辑插入渲染，此处不参与显示，均为 540x360 单卡无滚动 -->
+<template id="state-loading">
+  <div class="card state">
+    <div class="sk" style="width:96px;height:14px"></div>
+    <div class="sk" style="width:180px;height:56px"></div>
+    <div class="sk" style="width:260px;height:13px"></div>
+    <div class="sk" style="width:200px;height:13px"></div>
+  </div>
+</template>
+
+<template id="state-error">
+  <div class="card state">
+    <p class="state-error">运势获取失败，请稍后重试。</p>
+    <button class="btn btn-ghost" type="button">
+      <i class="ph ph-arrow-clockwise" aria-hidden="true"></i>重试
+    </button>
+  </div>
+</template>
+
+<script>
+  document.querySelector('.close-btn').addEventListener('click', () => {
+    if (window.pywebview && window.pywebview.api) {
+      window.pywebview.api.close();
+    }
+  });
+
+  const ICONS = { ok: 'ph-check-circle', info: 'ph-lightning', err: 'ph-warning-circle' };
+
+  const toastEl = document.getElementById('toast');
+  let toastTimer = null;
+
+  function showToast(kind, msg) {
+    toastEl.className = 'toast toast-' + kind;
+    toastEl.innerHTML = '<i class="ph ' + ICONS[kind] + '" aria-hidden="true"></i>';
+    const span = document.createElement('span');
+    span.textContent = msg;
+    toastEl.appendChild(span);
+    void toastEl.offsetWidth;
+    toastEl.classList.add('show');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2500);
+  }
+
+  function setLoading(btn, loading) {
+    if (loading) {
+      btn.dataset.html = btn.innerHTML;
+      btn.disabled = true;
+      btn.classList.add('is-loading');
+      btn.innerHTML = '<span class="spin" aria-hidden="true"></span>打卡中…';
+    } else {
+      btn.classList.remove('is-loading');
+    }
+  }
+
+  async function doPunch(btn) {
+    if (btn.disabled || !window.pywebview || !window.pywebview.api) return;
+    setLoading(btn, true);
+    let r;
+    try {
+      r = await window.pywebview.api.punch();
+    } catch (e) {
+      r = { ok: false, kind: 'error', msg: '打卡出错，请稍后重试' };
+    }
+    if (r && r.ok) {
+      btn.classList.remove('is-loading');
+      btn.classList.add('is-done');
+      btn.innerHTML = '<i class="ph ph-check-circle" aria-hidden="true"></i>已打卡';
+      showToast('ok', r.msg);
+      setTimeout(() => {
+        if (window.pywebview && window.pywebview.api) window.pywebview.api.refresh();
+      }, 1500);
+    } else {
+      btn.disabled = false;
+      btn.classList.remove('is-loading');
+      btn.innerHTML = btn.dataset.html || btn.innerHTML;
+      const kind = (r && r.kind) || 'err';
+      showToast(kind === 'already' ? 'info' : 'err', (r && r.msg) || '打卡失败，请稍后重试');
+    }
+  }
+
+  document.querySelectorAll('.punch-btn').forEach(btn => {
+    btn.addEventListener('click', () => doPunch(btn));
+  });
+</script>
+
+</body>
+</html>
