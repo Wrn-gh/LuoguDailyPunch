@@ -29,8 +29,34 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Download UPX
+        run: |
+          $ver = "5.2.1"
+          $zipName = "upx-$ver-win64.zip"
+          $url = "https://github.com/upx/upx/releases/download/v$ver/$zipName"
+          $expected = "eabc6792a347d45e945be7748423e7868fd01b0d2bcaa2f4b1031fd71ff69bda"
+          $work = Join-Path $env:RUNNER_TEMP "upx"
+          New-Item -Path $work -ItemType Directory -Force | Out-Null
+          $zipPath = Join-Path $work $zipName
+          curl.exe -sS -L --fail --retry 3 -o $zipPath $url
+          if ($LASTEXITCODE -ne 0) { Write-Host "[ERROR] UPX download failed"; exit 1 }
+          $actual = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLower()
+          if ($actual -ne $expected) {
+            Write-Host "[ERROR] SHA256 mismatch: expected $expected got $actual"
+            exit 1
+          }
+          Write-Host "[INFO] SHA256 verified"
+          Expand-Archive -Path $zipPath -DestinationPath $work -Force
+          $upxExe = Join-Path $work "upx-$ver-win64\upx.exe"
+          if (-not (Test-Path -LiteralPath $upxExe)) {
+            Write-Host "[ERROR] upx.exe not found at $upxExe"
+            exit 1
+          }
+          & $upxExe --version
+          "UPX_EXE=$upxExe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Build with Nuitka
-        run: nuitka --onefile --standalone --windows-console-mode=attach --assume-yes-for-downloads src/main.py --output-filename="lgpunch.exe" --output-dir="dist"
+        run: nuitka --onefile --standalone --windows-console-mode=attach --assume-yes-for-downloads src/main.py --enable-plugins=upx --upx-binary="$env:UPX_EXE" --onefile-no-compression --output-filename="lgpunch.exe" --output-dir="dist"
         env:
           NUITKA_ASSUME_YES_FOR_DOWNLOADS: "1"
 

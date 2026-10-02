@@ -3,3 +3,6 @@ plyer
 lxml
 platformdirs
 nuitka
+pywebview
+rich
+textual

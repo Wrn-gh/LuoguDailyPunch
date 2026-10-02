@@ -6,6 +6,14 @@
 
 一个洛谷自动打卡程序，帮你每天自动打卡并获取运势
 
+## Ver 2.0 Change Log
+- 洛谷运势看板 `lgpunch card` 唤出
+![CardScreenshot](/imgs/card_screenshot.png)
+- 新增 `lgpunch settings` 终端配置界面（Rich + Textual）
+![SettingsScreenshot](/imgs/settings_screenshot.png)
+- 新增静默模式：开启后打卡不再弹出系统通知
+- 修复了打卡结果的获取与显示
+
 ## 功能特性
 - 可配置开机自启，自动打卡
 - 每天自动打卡一次，用Windows通知显示今日运势 
@@ -49,5 +57,7 @@ cd release
 |------|------|
 | `lgpunch punch` | 手动打卡 |
 | `lgpunch set --uid <UID> --cid <ClientID>` | 配置用户信息 |
+| `lgpunch settings` | 打开终端配置界面 |
 | `lgpunch userinfo` | 查看已配置的用户信息 |
 | `lgpunch punchinfo` | 查看最近一次打卡信息 |
+| `lgpunch card` | 唤出运势卡片 |

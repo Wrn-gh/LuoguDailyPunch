@@ -48,6 +48,7 @@ class LuoguDailyPuncher:
     configTemplate = {
         "UID": "",
         "CLIENT_ID": "",
+        "Silent": False,
         "lastPunchRes": {},
         "PunchRes": [],
         "lastPunchTime": "",
@@ -187,7 +188,8 @@ class LuoguDailyPuncher:
                 history.pop(0)
             history.append(pResWithTime)
             self.save_config()
-            popup(t, m)
+            if not self.config.get("Silent"):
+                popup(t, m)
             return {"ok": True, "kind": "ok", "msg": "打卡成功！"}
         elif jsonObj["code"] == 201:
             print("[INFO] 今天你已经打过卡了哦，要一步一个脚印，不能急于求成!")
@@ -201,21 +203,53 @@ class LuoguDailyPuncher:
         self.config["CLIENT_ID"] = client_id
         self.save_config()
 
+    def set_silent(self, silent):
+        self.config["Silent"] = bool(silent)
+        self.save_config()
+
     def user_info(self):
-        print("UID: %s" % self.config["UID"])
-        print("CID: %s" % self.config["CLIENT_ID"])
+        from rich.console import Console
+        from rich.panel import Panel
+        from rich.table import Table
+
+        console = Console()
+        uid = self.config.get("UID") or "未配置"
+        cid = self.config.get("CLIENT_ID") or "未配置"
+        cid_masked = cid[:4] + "***" if cid and cid != "未配置" else cid
+
+        table = Table(show_header=False, box=None, padding=(0, 1))
+        table.add_column(style="bold", no_wrap=True)
+        table.add_column(no_wrap=True)
+        table.add_row("UID", str(uid))
+        table.add_row("Client ID", cid_masked)
+        table.add_row("静默模式", "开启（不弹出提示）" if self.config.get("Silent") else "关闭")
+        table.add_row("配置文件", self.configFilePath)
+
+        console.print(Panel(table, title="[bold]用户信息[/bold]", border_style="blue"))
 
     def punch_info(self):
-        t, m = self.gen_message(self.config["lastPunchRes"])
-        print(t)
-        print(m)
-        dtObj = datetime.fromtimestamp(self.config["lastPunchTime"])
-        fDate = dtObj.strftime('%Y-%m-%d %H:%M:%S')
-        print("Punch Time: %s" % fDate)
+        from rich.console import Console
+        from rich.panel import Panel
+
+        console = Console()
+        t, m = self.gen_message(self.config.get("lastPunchRes") or {})
+        lt = self.config.get("lastPunchTime")
+        if lt:
+            fDate = datetime.fromtimestamp(lt).strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            fDate = "尚未打卡"
+
+        console.print(Panel(t, title="[bold]最近一次打卡[/bold]", border_style="blue"))
+        console.print(m.strip())
+        console.print(f"[dim]打卡时间: {fDate}[/dim]")
 
     def showCard(self):
         card = Card(self.config, puncher=self)
         card.showCard()
+
+    def showSettings(self):
+        from settings import open_settings
+        open_settings(self)
 
 if __name__ == "__main__":
     # 配置文件路径
@@ -240,6 +274,8 @@ if __name__ == "__main__":
 
     card_parser = subparser.add_parser("card", help="显示打卡运势卡片")
 
+    settings_parser = subparser.add_parser("settings", help="打开配置界面")
+
     args = parser.parse_args()
 
     if args.command == "punch":
@@ -253,4 +289,6 @@ if __name__ == "__main__":
         luogu_daily_puncher.punch_info()
     elif args.command == "card":
         luogu_daily_puncher.showCard()
+    elif args.command == "settings":
+        luogu_daily_puncher.showSettings()
         
